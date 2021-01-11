@@ -69,8 +69,31 @@ int main(int argc, char* argv[]) {
                 }
                 printf("size: %ld \n",sizeof(request));
 
-                write(fd,&request,sizeof(request));
+                write(fd,&request,sizeof(Request));
 
+                sleep(3);
+
+                printf("2nd send\n");
+
+                Request r2;
+                strcpy(r2.id_file, "Asdasdas2");
+                strcpy(r2.dest_file, "Dest");
+                r2.n_transformations=argc-4;
+                trans_it=0;
+                
+                for(int i=4; i<argc; i++ && trans_it++){
+                    strcpy(r2.transformations[trans_it], argv[i]);
+                }
+                
+                trans_it=0;
+
+                for(trans_it=0; trans_it<r2.n_transformations; trans_it++) {
+                    printf("transformation n%d: %s\n",trans_it+1,r2.transformations[trans_it]);   
+                }
+
+                printf("r2.file: %s, r2.n_transformations: %d\n", r2.id_file, r2.n_transformations);
+
+                write(fd,&r2,sizeof(Request));
                 
                 //free_request(request);
                 close(fd);

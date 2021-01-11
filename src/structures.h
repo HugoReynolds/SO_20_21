@@ -23,4 +23,17 @@ typedef struct Filter{
     int in_use;
 } Filter;
 
+typedef struct InProgress {
+    int task_nr;
+    int n_transformations;
+    char dest_file[256];
+    char task_array[10][256];
+    int pid_array[10];
+    struct InProgress* next;
+} InProgress;
+
+typedef struct LinkedList {
+    InProgress* head;
+}
+
 #endif
