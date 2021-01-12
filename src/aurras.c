@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 #include "structures.h"
 
 
@@ -19,18 +20,25 @@ void free_request(Request r){
 
 
 int main(int argc, char* argv[]) {
-   int fd;
-   int end_process;
-   int stringlen;
-   int read_bytes;
-   char readbuf[80];
-   char end_str[5];
-   printf("FIFO_CLIENT: Send messages, infinitely, to end enter \"end\"\n");
-   fd = open(FIFO_FILE, O_CREAT|O_RDWR);
-   printf("Req: %d\n", fd);
-   strcpy(end_str, "end");
-
-   
+    int fd;
+    int end_process;
+    int stringlen;
+    int read_bytes;
+    char readbuf[80];
+    char end_str[5];
+    printf("FIFO_CLIENT: Send messages, infinitely, to end enter \"end\"\n");
+    fd = open(FIFO_FILE, O_CREAT|O_RDWR);
+    printf("Req: %d\n", fd);
+    strcpy(end_str, "end");
+    srand(time(NULL));
+    char* filter_array[] = {
+        "eco",
+        "alto",
+        "baixo",
+        "lento",
+        "rapido"
+    };
+    
     switch (argc){
         case 1:
             printf("./aurras transform input-filename output-filename filter-id-1 filter-id-2 ...\n");
@@ -47,8 +55,36 @@ int main(int argc, char* argv[]) {
             }
             break;
         default:
-
             if((strcmp("transform",argv[1])==0) && (argc>4) && (argc<14)){
+                // gerador de pedidos aleatório
+                for (int it = 0; it < 5; it++) {
+                    Request request;
+                    memset(&request.id_file, 0, 128);
+                    strcpy(request.id_file, argv[2]);
+                    memset(&request.dest_file, 0, 128);
+                    strcpy(request.dest_file, argv[3]);
+                    request.n_transformations=(rand() % 3 + 1 + 1);
+                    printf("Nº of trans: %d\n", request.n_transformations);
+                    int trans_it=0;
+                    int check_array[] = {0,0,0,0,0};
+                    for (int i = 0; i < request.n_transformations; i++) {
+                        int index_of_trans = (rand() % request.n_transformations + 0 + 1);
+                        while(check_array[index_of_trans]) {
+                            index_of_trans = (rand() % request.n_transformations + 0 + 1);
+                        }
+                        
+                        // o indice index_of_trans ainda está a 0, o que significa, que a trans não foi escolhida
+                        check_array[index_of_trans] = 1;
+                        strcpy(request.transformations[trans_it], filter_array[index_of_trans]);
+                        printf("A transf: %s, foi selecionada, para o indice: %d\n", filter_array[index_of_trans], trans_it);
+                        trans_it++;
+                    }
+
+                    write(fd,&request,sizeof(Request));
+                    sleep(rand() % 3 + 1 + 1);
+                }
+
+                /*
                 printf("Inside default\n");
                 Request request;
                 memset(&request.id_file, 0, 128);
@@ -71,7 +107,7 @@ int main(int argc, char* argv[]) {
 
                 write(fd,&request,sizeof(Request));
 
-                sleep(3);
+                sleep(2);
 
                 printf("2nd send\n");
 
@@ -94,7 +130,7 @@ int main(int argc, char* argv[]) {
                 printf("r2.file: %s, r2.n_transformations: %d\n", r2.id_file, r2.n_transformations);
 
                 write(fd,&r2,sizeof(Request));
-                
+                */
                 //free_request(request);
                 close(fd);
                 //printf("%d\n",request.n_transformations);

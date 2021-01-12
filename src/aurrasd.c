@@ -68,7 +68,8 @@ void get_filters(int n_filters) {
         filter_array[it].in_use = 0;
     }
 
-    //for (int it = 0; it < n_filters; it++) printf("Name: %s, Command: %s, Quantity: %d\n", filter_array[it].name, filter_array[it].command, filter_array[it].quantity);
+    printf("--- Available Filters ---\n\n");
+    for (int it = 0; it < n_filters; it++) printf("Filter nr: %d. Name: %s, Quantity: %d\n", it, filter_array[it].name, filter_array[it].quantity);
 
     free(buf);
     free(fname);
@@ -101,12 +102,11 @@ int check_filter_availability(Request r) {
     return 0;
 }
 
-
 void releaseResources(LinkedList* list, int pid) {
     InProgress* curr = list->head;
     int curr_index = 0;
 
-    printf("Gonna release the resources for the pid: %d\n", pid);
+    printf("---Gonna release the resources for the pid: %d---\n\n", pid);
 
     if (curr == NULL) {
         printf("Release resources. List is NULL\n");
@@ -119,16 +119,21 @@ void releaseResources(LinkedList* list, int pid) {
             if (curr->pid_array[it] == pid) {
                 // found the task that the process is executing
                 // so we need to release the resources in use
-                printf("Found the pid! It belongs to the task nr: %d\n", curr->task_nr);
                 int filter_index = get_filter_index(curr->task_array[it]);
                 if (filter_index != -1) {
                     // resources are freed
                     filter_array[filter_index].in_use--;
-                    printf("Released: 1 unit of the %s filter\n", filter_array[filter_index].name);
-                    //kill(getppid(), SIGCHLD);
+                    printf("--- Released: 1 unit of the %s filter belonging to pid: %d---\n\nFilter %s is now at %d / %d\n\n", filter_array[filter_index].name, pid, filter_array[filter_index].name, filter_array[filter_index].in_use, filter_array[filter_index].quantity);
+                    //printf("Sendig SIGUSR1 to: %d\n\n", getpid());
+                    //kill(getpid(), SIGUSR1);
+                    //printf("---After sending SIGUSR1 to PID: %d from PID: %d---\n\n", getpid(), pid);
                 }
                 curr->done_transformations++;
-                if (curr->done_transformations == curr->n_transformations) removeIndex(list, curr_index);
+                printf("--- Task Nr: %d. Done Transformations: %d, N_Transformations %d --- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
+                if (curr->done_transformations == curr->n_transformations) {
+                    printf("--- Removing Index %d from InProgress---\n\n", curr_index);
+                    removeIndex(list, curr_index);
+                }
                 return;
             }
         }
@@ -136,17 +141,26 @@ void releaseResources(LinkedList* list, int pid) {
     }
 }
 
-void child_handler(int sig) {
-    //function that handles SIGCHILD - when a child dies runs this
-    pid_t child_pid = wait(NULL);
-    printf("---Caught SIGCHILD! PID: %d---\n\n", child_pid);
-    releaseResources(in_progress_list, child_pid);
+void signal_handler(int sig) {
+    //function that handles signals
+    printf("---Process executing signal_handler has PID: %d---\n\n", getpid());
+    pid_t pid = wait(NULL);
+    switch (sig){
+    case SIGCHLD:
+        printf("Received SIGCHILD with Pid: %d!\n\n",pid);
+        releaseResources(in_progress_list, pid);
+        break;
+    case SIGUSR1:
+        printf("Received SIGUSR1 with Pid: %d!\n\n",pid);
+        break;
+    default:
+        printf("Some other signal was received\n\n");
+        break;
+    }
 }
 
 void executor(int sleep_time) {
-    printf("---PID %d, gonna sleep for %d seconds---\n\n", getpid(), sleep_time);
     sleep(sleep_time);
-    printf("PID %d finishing executor now\n", getpid());
     exit(1);
 }
 
@@ -161,7 +175,6 @@ void dispatch(Request r) {
                 // found the desired transformation in the available filters array
                 if (filter_array[i].in_use < filter_array[i].quantity){
                     filter_array[i].in_use++;
-                    printf("A transformacao %s tem %d unidades em uso de %d totais.\n",filter_array[i].name,filter_array[i].in_use, filter_array[i].quantity);
                 } 
             }
         }
@@ -186,6 +199,8 @@ void dispatch(Request r) {
         }
     }
     add(&ip, in_progress_list);
+
+    printf("\n+++ Added Task nr %d to InProgess +++\n\n", ip.task_nr);
 }
 
 int main(int argc, char* argv[]) {
@@ -200,6 +215,8 @@ int main(int argc, char* argv[]) {
 
     if (requests_pipe == -1 || status_pipe == -1) return 0;
 
+    printf("\n---PID Main: %d---\n\n", getpid());
+
     int fd;
     char readbuf[80];
     char end[10];
@@ -210,7 +227,8 @@ int main(int argc, char* argv[]) {
 
     // Server Setup
     // Signal Handlers
-    signal(SIGCHLD, child_handler);
+    signal(SIGCHLD, signal_handler);
+    signal(SIGUSR1, signal_handler);
 
     // Filter Management
     n_filters = filter_counter() + 1;
@@ -225,7 +243,6 @@ int main(int argc, char* argv[]) {
     //printf("size: %d\n", sizeof(r));    
     
     while(flag) {
-        printf("Before read\n");
         Request r;
         read(requests_pipe, &r, sizeof(Request));
         //printf("id_file: %s\nr.destfile: %s \nr.ntransformations: %d \n",r.id_file,r.dest_file,r.n_transformations);
@@ -246,25 +263,25 @@ int main(int argc, char* argv[]) {
             // All of the filters exist
             // We now run check__filter_availability to see if all filters are available
             // Returns 0 if they are, -1 otherwise
-            printf("Filters exist\n");
             int filters_available = check_filter_availability(r);
             while(filters_available) {
                 // this will execute if some of the filters are not available
-                //sigwait();
-                
+                printf("/// Inside Filters are not Available while \\\\\n\n");
+                /*
+                sigset_t wset;
+                sigemptyset(&wset);
+                sigaddset(&wset, SIGUSR1);
+                int sig;
+                sigwait(&wset, &sig);
+                */
                 sleep(5);
+                printf("---Before CheckFilterAvailability---\n\n");
                 filters_available = check_filter_availability(r);
-                printf("---Filters availables: %d---\n\n",filters_available);
             }
 
             // Request is ready to be dispatched
             dispatch(r);
-            InProgress* ip = getIndex(in_progress_list, 0);
-            printf("GetIndex list: %d\n", ip->n_transformations);
         }
-
-        printf("Finishing while loop\n");
-
     }
 
     close(requests_pipe);
