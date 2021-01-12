@@ -1,4 +1,3 @@
-/* Filename: fifoserver_twoway.c */
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -10,8 +9,8 @@
 #include <signal.h>
 #include "structures.h"
 
-#define REQUESTS_PIPE "../tmp/requests_pipe"
-#define STATUS_PIPE "../tmp/status_pipe"
+#define REQUESTS_PIPE "/mnt/d/Documentos/Github/SO20_21/tmp/requests_pipe"
+#define STATUS_PIPE "./../tmp/status_pipe"
 
 int flag1 = 1;
 int n_filters = 0;
@@ -153,9 +152,11 @@ void dispatch(Request r) {
 }
 
 int main(int argc, char* argv[]) {
+    mkfifo("Please", 0666);
     // Variables initialization
     int server_pipes[3][2];
-    mkfifo(REQUESTS_PIPE, 0666);
+    int req_fifo = mkfifo(REQUESTS_PIPE, 0666);
+    printf("req_fifo: %d\n", req_fifo);
     int requests_pipe = open(REQUESTS_PIPE, O_RDWR);
 
     mkfifo(STATUS_PIPE, 0666);
