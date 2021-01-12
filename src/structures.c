@@ -18,6 +18,7 @@ void add(InProgress* data, LinkedList* list) {
     if (list->head == NULL) {
         list->head = malloc(sizeof(InProgress));
         list->head->n_transformations = data->n_transformations;
+        list->head->next = NULL;
         list->tasks_in_progress++;
     }
     else {
@@ -49,15 +50,36 @@ InProgress* getIndex(LinkedList* list, int index) {
 }
 
 void removeIndex(LinkedList* list, int index) {
-    if (index >= list->tasks_in_progress) printf("No such item with that index\n");
+    if (index >= list->tasks_in_progress) {
+        printf("No such item with that index\n");
+        return;
+    }
+    
     InProgress* temp;
     InProgress* prev;
     temp = list->head;
     
-    if (temp == NULL) return;
+    // check if list is null
 
+    if (temp == NULL) {
+        return;
+    }
+
+    // remove index 0
+    if (index == 0) {
+        prev = temp;
+        temp = temp->next;
+        free(prev);
+        // reconnect the the head of the list...
+        list->head = temp;
+        list->tasks_in_progress--;
+        return;
+    }
+
+    // remove index 1+
     int it = 0;
-
+    
+    prev = temp;
     while (it < index && temp!=NULL) {
         prev = temp;
         temp = temp->next;
@@ -81,4 +103,5 @@ void free_list(LinkedList* list) {
         tmpPtr = tmpPtr->next;
         free(followPtr);
     }
+    free(list);
 }

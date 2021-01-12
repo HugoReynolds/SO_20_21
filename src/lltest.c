@@ -9,23 +9,21 @@ void main() {
         InProgress ip;
         ip.n_transformations = it;
         add(&ip, list);
+        printf("Added %d to position %d\n", it, it);
         InProgress* ipp = getIndex(list, it);
-        printf("Ipp Transfs: %d\n\n", ipp->n_transformations);
+        printf("Index at position[%d] is %d\n\n", it, ipp->n_transformations);
     }
 
+    removeIndex(list, 0);
     printf("---Getting: 5---\n");
     InProgress* ipp = getIndex(list, 5);
     printf("Index[%d]: %d\n\n", 5, ipp->n_transformations);
-    printf("---Removing: 1---\n");
-    removeIndex(list, 1);
-    printf("\n\n");
     printf("---Getting: 2---\n");
     ipp = getIndex(list, 2);
     printf("Index[%d]: %d\n\n", 2, ipp->n_transformations);
-
     for (int it = 0; it < list->tasks_in_progress; it++) {
+        printf("Removing index %d. There are %d Tasks in Progress.\n", it, list->tasks_in_progress);
         removeIndex(list, it);
     }
-
     free_list(list);
 }
