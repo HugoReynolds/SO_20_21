@@ -9,10 +9,10 @@
 #include <signal.h>
 #include "structures.h"
 
-#define REQUESTS_PIPE "/mnt/d/Documentos/Github/SO20_21/tmp/requests_pipe"
+#define REQUESTS_PIPE "./../tmp/requests_pipe"
 #define STATUS_PIPE "./../tmp/status_pipe"
 
-int flag1 = 1;
+int flag = 1;
 int n_filters = 0;
 Filter* filter_array;
 
@@ -152,11 +152,10 @@ void dispatch(Request r) {
 }
 
 int main(int argc, char* argv[]) {
-    mkfifo("Please", 0666);
     // Variables initialization
     int server_pipes[3][2];
+
     int req_fifo = mkfifo(REQUESTS_PIPE, 0666);
-    printf("req_fifo: %d\n", req_fifo);
     int requests_pipe = open(REQUESTS_PIPE, O_RDWR);
 
     mkfifo(STATUS_PIPE, 0666);
@@ -164,7 +163,7 @@ int main(int argc, char* argv[]) {
 
     printf("reqs: %d, status: %d\n", requests_pipe, status_pipe);
 
-    if (requests_pipe == -1 && status_pipe == -1) return 0;
+    if (requests_pipe == -1 || status_pipe == -1) return 0;
 
     int fd;
     char readbuf[80];
@@ -190,7 +189,7 @@ int main(int argc, char* argv[]) {
 
     //printf("size: %d\n", sizeof(r));    
     
-    while(flag1) {
+    while(flag) {
         printf("Before read\n");
         Request r;
         read(requests_pipe, &r, sizeof(Request));
