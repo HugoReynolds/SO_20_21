@@ -161,6 +161,10 @@ int main(int argc, char* argv[]) {
     mkfifo(STATUS_PIPE, 0666);
     int status_pipe = open(STATUS_PIPE, O_RDWR);
 
+    printf("reqs: %d, status: %d\n", requests_pipe, status_pipe);
+
+    if (requests_pipe == -1 && status_pipe == -1) return 0;
+
     int fd;
     char readbuf[80];
     char end[10];

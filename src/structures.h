@@ -34,6 +34,6 @@ typedef struct InProgress {
 
 typedef struct LinkedList {
     InProgress* head;
-}
+} LinkedList;
 
 #endif
