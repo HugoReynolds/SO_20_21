@@ -24,6 +24,7 @@ typedef struct Filter{
 
 typedef struct InProgress {
     int task_nr;
+    int done_transformations;
     int n_transformations;
     char dest_file[256];
     char task_array[10][256];

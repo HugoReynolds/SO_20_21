@@ -22,7 +22,7 @@ int total_tasks = 0;
 // In Progress Tasks
 int curr_in_progress = 0;
 int max_in_progress = 10;
-InProgress* in_progress_array;
+LinkedList* in_progress_list;
 
 ssize_t readln(int fd, char* buf, size_t nbyte){
     // we assume that the buf is as big as nbytes
@@ -101,16 +101,50 @@ int check_filter_availability(Request r) {
     return 0;
 }
 
-void child_handler(int sig) {
-    //function that handles SIGCHILD
-    pid_t child_pid = wait(NULL);
-    printf("Caught SIGCHILD! PID: %d\n", child_pid);
 
+void releaseResources(LinkedList* list, int pid) {
+    InProgress* curr = list->head;
+    int curr_index = 0;
+
+    printf("Gonna release the resources for the pid: %d\n", pid);
+
+    if (curr == NULL) {
+        printf("Release resources. List is NULL\n");
+        return;
+    }
+
+    while(curr!=NULL) {
+        // Iterating current task
+        for(int it = 0; it < curr->n_transformations; it++) {
+            if (curr->pid_array[it] == pid) {
+                // found the task that the process is executing
+                // so we need to release the resources in use
+                printf("Found the pid! It belongs to the task nr: %d\n", curr->task_nr);
+                int filter_index = get_filter_index(curr->task_array[it]);
+                if (filter_index != -1) {
+                    // resources are freed
+                    filter_array[filter_index].in_use--;
+                    printf("Released: 1 unit of the %s filter\n", filter_array[filter_index].name);
+                    //kill(getppid(), SIGCHLD);
+                }
+                curr->done_transformations++;
+                if (curr->done_transformations == curr->n_transformations) removeIndex(list, curr_index);
+                return;
+            }
+        }
+        curr = curr->next;
+    }
 }
 
-void executor() {
-    int sleep_time = 6;
-    printf("PID %d, gonna sleep for %d seconds\n", getpid(), sleep_time);
+void child_handler(int sig) {
+    //function that handles SIGCHILD - when a child dies runs this
+    pid_t child_pid = wait(NULL);
+    printf("---Caught SIGCHILD! PID: %d---\n\n", child_pid);
+    releaseResources(in_progress_list, child_pid);
+}
+
+void executor(int sleep_time) {
+    printf("---PID %d, gonna sleep for %d seconds---\n\n", getpid(), sleep_time);
     sleep(sleep_time);
     printf("PID %d finishing executor now\n", getpid());
     exit(1);
@@ -135,20 +169,23 @@ void dispatch(Request r) {
 
     // add task to in_progress array
     InProgress ip;
-    ip.task_nr = total_tasks;
+    ip.next = NULL;
+    ip.task_nr = ++total_tasks;
+    ip.done_transformations = 0;
     ip.n_transformations = r.n_transformations;
     strcpy(ip.dest_file,r.dest_file);
     for (int it = 0; it < r.n_transformations; it++) {
         strcpy(ip.task_array[it], r.transformations[it]);
-        ip.pid_array[it] = fork();
-        if (!ip.pid_array[it]) {
+        int child_pid = fork();
+        if (!child_pid) {
             // child
-            executor();
+            executor(it+2);
+        }
+        else {
+            ip.pid_array[it] = child_pid;
         }
     }
-    printf("Task n: %d\n", ip.task_nr);
-    for (int it = 0; it < r.n_transformations; it++) printf("Transformation[%d]: %s. Done by PID: %d\n", it, ip.task_array[it], ip.pid_array[it]); 
-
+    add(&ip, in_progress_list);
 }
 
 int main(int argc, char* argv[]) {
@@ -160,8 +197,6 @@ int main(int argc, char* argv[]) {
 
     mkfifo(STATUS_PIPE, 0666);
     int status_pipe = open(STATUS_PIPE, O_RDWR);
-
-    printf("reqs: %d, status: %d\n", requests_pipe, status_pipe);
 
     if (requests_pipe == -1 || status_pipe == -1) return 0;
 
@@ -181,7 +216,7 @@ int main(int argc, char* argv[]) {
     n_filters = filter_counter() + 1;
 
     filter_array = malloc(n_filters * sizeof(Filter));
-    in_progress_array = malloc(max_in_progress * sizeof(InProgress));
+    in_progress_list = list_init();
 
     get_filters(n_filters);
     
@@ -205,13 +240,13 @@ int main(int argc, char* argv[]) {
         if (!filters_exist) {
             // One of the filters doesn't exist 
             // Todo
-            printf("Inside !filters_exist\n");
+            printf("Filters don't exist\n");
         }
         else {
             // All of the filters exist
             // We now run check__filter_availability to see if all filters are available
             // Returns 0 if they are, -1 otherwise
-            total_tasks = 1;
+            printf("Filters exist\n");
             int filters_available = check_filter_availability(r);
             while(filters_available) {
                 // this will execute if some of the filters are not available
@@ -219,25 +254,13 @@ int main(int argc, char* argv[]) {
                 
                 sleep(5);
                 filters_available = check_filter_availability(r);
-                printf("filters availables: %d \n",filters_available);
+                printf("---Filters availables: %d---\n\n",filters_available);
             }
 
             // Request is ready to be dispatched
             dispatch(r);
-            /*
-            int child_pid = fork();
-
-            if (!child_pid) {
-                // child
-                printf("CHILD PID: %d\n", getpid());
-                sleep(2);
-                exit(1);
-            }
-            else {
-                
-            }
-            */
-
+            InProgress* ip = getIndex(in_progress_list, 0);
+            printf("GetIndex list: %d\n", ip->n_transformations);
         }
 
         printf("Finishing while loop\n");

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "structures.h"
 
 LinkedList* list_init() {
@@ -17,7 +18,14 @@ void add(InProgress* data, LinkedList* list) {
 
     if (list->head == NULL) {
         list->head = malloc(sizeof(InProgress));
+        list->head->task_nr = data->task_nr;
+        list->head->done_transformations = 0;
         list->head->n_transformations = data->n_transformations;
+        strcpy(list->head->dest_file, data->dest_file);
+        for (int it = 0; it < data->n_transformations; it++) {
+            strcpy(list->head->task_array[it], data->task_array[it]);
+            list->head->pid_array[it] = data->pid_array[it];
+        }
         list->head->next = NULL;
         list->tasks_in_progress++;
     }
@@ -26,7 +34,14 @@ void add(InProgress* data, LinkedList* list) {
         while(curr->next != NULL) curr = curr->next;
         curr->next= malloc(sizeof(InProgress));
         curr = curr->next;
+        curr->task_nr = data->task_nr;
+        curr->done_transformations = 0;
         curr->n_transformations = data->n_transformations;
+        strcpy(curr->dest_file, data->dest_file);
+        for (int it = 0; it < data->n_transformations; it++) {
+            strcpy(curr->task_array[it], data->task_array[it]);
+            curr->pid_array[it] = data->pid_array[it];
+        }
         curr->next = NULL;
         list->tasks_in_progress++;
     }
