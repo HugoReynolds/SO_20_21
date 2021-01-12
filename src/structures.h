@@ -1,7 +1,6 @@
 #ifndef structures_h
 #define structures_h
 
-
 typedef struct Request {
     int n_transformations;
     char id_file[256];
@@ -32,8 +31,15 @@ typedef struct InProgress {
     struct InProgress* next;
 } InProgress;
 
-typedef struct LinkedList {
-    InProgress* head;
+typedef struct LinkedList{
+    struct InProgress* head;
+    int tasks_in_progress;
 } LinkedList;
+
+LinkedList* list_init();
+void add(InProgress* data, LinkedList* list);
+InProgress* getIndex(LinkedList* list, int index);
+void removeIndex(LinkedList* list, int index);
+void free_list(LinkedList* list);
 
 #endif
