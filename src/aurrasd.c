@@ -14,7 +14,7 @@
 #define STATUS_PIPE "../tmp/status_pipe"
 
 int flag = 1;
-int n_filters=0;
+int n_filters = 0;
 Filter* filter_array;
 
 // Total Tasks
