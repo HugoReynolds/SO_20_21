@@ -24,6 +24,10 @@ int curr_in_progress = 0;
 int max_in_progress = 10;
 LinkedList* in_progress_list;
 
+// Strings with locations
+char* conf_dir;
+char* trans_dir;
+
 ssize_t readln(int fd, char* buf, size_t nbyte){
     // we assume that the buf is as big as nbytes
     int limite=0;
@@ -106,7 +110,7 @@ void releaseResources(LinkedList* list, int pid) {
     InProgress* curr = list->head;
     int curr_index = 0;
 
-    printf("---Gonna release the resources for the pid: %d---\n\n", pid);
+    //printf("---Gonna release the resources for the pid: %d---\n\n", pid);
 
     if (curr == NULL) {
         printf("Release resources. List is NULL\n");
@@ -123,44 +127,40 @@ void releaseResources(LinkedList* list, int pid) {
                 if (filter_index != -1) {
                     // resources are freed
                     filter_array[filter_index].in_use--;
-                    printf("--- Released: 1 unit of the %s filter belonging to pid: %d---\n\nFilter %s is now at %d / %d\n\n", filter_array[filter_index].name, pid, filter_array[filter_index].name, filter_array[filter_index].in_use, filter_array[filter_index].quantity);
-                    //printf("Sendig SIGUSR1 to: %d\n\n", getpid());
-                    //kill(getpid(), SIGUSR1);
-                    //printf("---After sending SIGUSR1 to PID: %d from PID: %d---\n\n", getpid(), pid);
+                    printf("A: [%d], B: [%d], E: [%d], R: [%d], L: [%d]\n\n", filter_array[0].in_use,filter_array[1].in_use,filter_array[2].in_use,filter_array[3].in_use,filter_array[4].in_use);
                 }
                 curr->done_transformations++;
                 printf("--- Task Nr: %d. Done Transformations: %d, N_Transformations %d --- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
                 if (curr->done_transformations == curr->n_transformations) {
-                    printf("--- Removing Index %d from InProgress---\n\n", curr_index);
                     removeIndex(list, curr_index);
                 }
                 return;
             }
         }
         curr = curr->next;
+        curr_index++;
     }
 }
 
 void signal_handler(int sig) {
     //function that handles signals
-    printf("---Process executing signal_handler has PID: %d---\n\n", getpid());
     pid_t pid = wait(NULL);
     switch (sig){
-    case SIGCHLD:
-        printf("Received SIGCHILD with Pid: %d!\n\n",pid);
-        releaseResources(in_progress_list, pid);
-        break;
-    case SIGUSR1:
-        printf("Received SIGUSR1 with Pid: %d!\n\n",pid);
-        break;
-    default:
-        printf("Some other signal was received\n\n");
-        break;
+        case SIGCHLD:
+            printf("Received SIGCHILD with Pid: %d!\n\n",pid);
+            releaseResources(in_progress_list, pid);
+            break;
+        case SIGUSR1:
+            printf("Received SIGUSR1 with Pid: %d!\n\n",pid);
+            break;
+        default:
+            printf("Some other signal was received\n\n");
+            break;
     }
 }
 
-void executor(int sleep_time) {
-    sleep(sleep_time);
+void executor(char* trans) {
+    execl(trans, trans, NULL);
     exit(1);
 }
 
@@ -175,6 +175,7 @@ void dispatch(Request r) {
                 // found the desired transformation in the available filters array
                 if (filter_array[i].in_use < filter_array[i].quantity){
                     filter_array[i].in_use++;
+                    printf("A: [%d], B: [%d], E: [%d], R: [%d], L: [%d]\n\n", filter_array[0].in_use,filter_array[1].in_use,filter_array[2].in_use,filter_array[3].in_use,filter_array[4].in_use);
                 } 
             }
         }
@@ -186,24 +187,103 @@ void dispatch(Request r) {
     ip.task_nr = ++total_tasks;
     ip.done_transformations = 0;
     ip.n_transformations = r.n_transformations;
+    strcpy(ip.origin_file,r.id_file);
     strcpy(ip.dest_file,r.dest_file);
     for (int it = 0; it < r.n_transformations; it++) {
         strcpy(ip.task_array[it], r.transformations[it]);
+        // format task string with dir
+        int filter_index = get_filter_index(ip.task_array[it]);
+
+        char* task_with_dir = malloc((strlen(filter_array[filter_index].command) + strlen(trans_dir) + 1) * sizeof(char));
+        memcpy(task_with_dir, trans_dir, strlen(trans_dir));
+        memcpy(task_with_dir + strlen(trans_dir), filter_array[filter_index].command, strlen(filter_array[filter_index].command));
+        memcpy(task_with_dir + strlen(trans_dir) + strlen(filter_array[filter_index].command), "\0", 1);
+        
+        // pipe
+
+        if (it < (r.n_transformations - 1)) {
+            // not the last iteration
+            pipe(ip.pipe_matrix[it]);
+        }
+
+        // fork
+
         int child_pid = fork();
         if (!child_pid) {
             // child
-            executor(it+2);
+            if (!it) {
+                printf("First child!\n");
+                // first child
+                // closing reading end
+                close(ip.pipe_matrix[it][0]);
+                printf("Origin file: %s\n\n", ip.origin_file);
+                int origin_file = open(ip.origin_file, O_RDONLY);
+                dup2(origin_file, 0);
+                close(origin_file);
+
+                // redirect writing end
+                dup2(ip.pipe_matrix[it][1],1);
+                close(ip.pipe_matrix[it][1]);
+
+                executor(task_with_dir);
+            }
+            else{ 
+                if (it == ip.n_transformations-1) {
+                    printf("Last child!\n");
+                    // last child
+                    // close writing end
+                    printf("Destination file: %s\n\n", ip.dest_file);
+                    close(ip.pipe_matrix[it-1][1]);
+                    int dest_file = open(ip.dest_file, O_WRONLY);
+                    dup2(dest_file, 1);
+                    close(dest_file);
+
+                    // redirect reading end
+                    dup2(ip.pipe_matrix[it-1][0],0);
+                    close(ip.pipe_matrix[it-1][0]);
+
+                    executor(task_with_dir);
+                }
+                else {
+                    printf("One of the middle child!\n");
+                    // one of the middle childs
+                    // close reading end
+                    close(ip.pipe_matrix[it][0]);
+
+                    // close writing end
+                    close(ip.pipe_matrix[it-1][1]);
+
+                    // redirect reading end
+                    dup2(ip.pipe_matrix[it-1][0],0);
+                    close(ip.pipe_matrix[it-1][0]);
+
+                    //redirect writing end
+                    dup2(ip.pipe_matrix[it][1],1);
+                    close(ip.pipe_matrix[it][1]);
+
+                    executor(task_with_dir);
+                }
+            }
         }
         else {
+            // Father
             ip.pid_array[it] = child_pid;
         }
     }
+
     add(&ip, in_progress_list);
 
     printf("\n+++ Added Task nr %d to InProgess +++\n\n", ip.task_nr);
+    for(int it = 0; it < ip.n_transformations; it++) printf("PID: %d -> Filter %s\n", ip.pid_array[it], ip.task_array[it]);
 }
 
 int main(int argc, char* argv[]) {
+    if (argc != 3) return 1;
+    else {
+        conf_dir = strdup(argv[1]);
+        trans_dir = strdup(argv[2]);
+        printf("Conf: %s, Trans_dir: %s\n", conf_dir, trans_dir);
+    }
     // Variables initialization
     int server_pipes[3][2];
 
@@ -266,7 +346,7 @@ int main(int argc, char* argv[]) {
             int filters_available = check_filter_availability(r);
             while(filters_available) {
                 // this will execute if some of the filters are not available
-                printf("/// Inside Filters are not Available while \\\\\n\n");
+                //printf("/// Inside Filters are not Available while \\\\\n\n");
                 /*
                 sigset_t wset;
                 sigemptyset(&wset);
@@ -275,7 +355,7 @@ int main(int argc, char* argv[]) {
                 sigwait(&wset, &sig);
                 */
                 sleep(5);
-                printf("---Before CheckFilterAvailability---\n\n");
+                //printf("---Before CheckFilterAvailability---\n\n");
                 filters_available = check_filter_availability(r);
             }
 

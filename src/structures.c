@@ -21,10 +21,16 @@ void add(InProgress* data, LinkedList* list) {
         list->head->task_nr = data->task_nr;
         list->head->done_transformations = 0;
         list->head->n_transformations = data->n_transformations;
+        strcpy(list->head->origin_file, data->origin_file);
         strcpy(list->head->dest_file, data->dest_file);
         for (int it = 0; it < data->n_transformations; it++) {
             strcpy(list->head->task_array[it], data->task_array[it]);
             list->head->pid_array[it] = data->pid_array[it];
+        }
+        // pipe_matrix
+        for (int it = 0; it < 10; it++) {
+            list->head->pipe_matrix[it][0] = data->pipe_matrix[it][0];
+            list->head->pipe_matrix[it][1] = data->pipe_matrix[it][1];
         }
         list->head->next = NULL;
         list->tasks_in_progress++;
@@ -37,10 +43,16 @@ void add(InProgress* data, LinkedList* list) {
         curr->task_nr = data->task_nr;
         curr->done_transformations = 0;
         curr->n_transformations = data->n_transformations;
+        strcpy(curr->origin_file, data->origin_file);
         strcpy(curr->dest_file, data->dest_file);
         for (int it = 0; it < data->n_transformations; it++) {
             strcpy(curr->task_array[it], data->task_array[it]);
             curr->pid_array[it] = data->pid_array[it];
+        }
+        // pipe_matrix
+        for (int it = 0; it < 10; it++) {
+            curr->pipe_matrix[it][0] = data->pipe_matrix[it][0];
+            curr->pipe_matrix[it][1] = data->pipe_matrix[it][1];
         }
         curr->next = NULL;
         list->tasks_in_progress++;
