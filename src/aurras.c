@@ -56,16 +56,16 @@ int main(int argc, char* argv[]) {
             break;
         default:
             if((strcmp("transform",argv[1])==0) && (argc>4) && (argc<14)){
-                /*
+                
                 // gerador de pedidos aleatório
-                for (int it = 0; it < 5; it++) {
+                for (int it = 0; it < 50; it++) {
                     Request request;
                     memset(&request.id_file, 0, 128);
                     strcpy(request.id_file, argv[2]);
                     memset(&request.dest_file, 0, 128);
                     strcpy(request.dest_file, argv[3]);
-                    request.n_transformations=(rand() % 4 + 0 + 1);
-                    printf("Nº of trans: %d\n", request.n_transformations);
+                    request.n_transformations=(rand() % 3 + 2);
+                    printf("--- Task [%d]: Nº of trans: %d ---\n", it+1, request.n_transformations);
                     int trans_it=0;
                     int check_array[] = {0,0,0,0,0};
                     for (int i = 0; i < request.n_transformations; i++) {
@@ -80,12 +80,13 @@ int main(int argc, char* argv[]) {
                         printf("A transf: %s, foi selecionada, para o indice: %d\n", filter_array[index_of_trans], trans_it);
                         trans_it++;
                     }
+                    printf("\n");
 
                     write(fd,&request,sizeof(Request));
-                    //sleep(rand() % 3 + 1 + 1);
+                    sleep(rand() % 5 + 3 + 1);
                 }
-                */
                 
+                /*
                 printf("Inside default\n");
                 Request request;
                 memset(&request.id_file, 0, 128);
@@ -107,7 +108,7 @@ int main(int argc, char* argv[]) {
                 printf("size: %ld \n",sizeof(request));
 
                 write(fd,&request,sizeof(Request));
-                /*
+                
                 sleep(2);
 
                 printf("2nd send\n");

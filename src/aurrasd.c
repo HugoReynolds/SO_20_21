@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <time.h>
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
@@ -37,6 +38,16 @@ ssize_t readln(int fd, char* buf, size_t nbyte){
         limite++;
     }
     return limite;
+}
+
+char *my_itoa(int num, char *str)
+{
+        if(str == NULL)
+        {
+                return NULL;
+        }
+        sprintf(str, "%d", num);
+        return str;
 }
 
 int filter_counter() {
@@ -130,8 +141,9 @@ void releaseResources(LinkedList* list, int pid) {
                     printf("A: [%d], B: [%d], E: [%d], R: [%d], L: [%d]\n\n", filter_array[0].in_use,filter_array[1].in_use,filter_array[2].in_use,filter_array[3].in_use,filter_array[4].in_use);
                 }
                 curr->done_transformations++;
-                printf("--- Task Nr: %d. Done Transformations: %d, N_Transformations %d --- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
+                printf("--- Task Nr: %d. %d/%d transformations done.--- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
                 if (curr->done_transformations == curr->n_transformations) {
+                    printf("\n --- Task [%d] is finished! --- \n\n", curr->task_nr);
                     removeIndex(list, curr_index);
                 }
                 return;
@@ -199,76 +211,122 @@ void dispatch(Request r) {
         memcpy(task_with_dir + strlen(trans_dir), filter_array[filter_index].command, strlen(filter_array[filter_index].command));
         memcpy(task_with_dir + strlen(trans_dir) + strlen(filter_array[filter_index].command), "\0", 1);
         
-        // pipe
+        if (r.n_transformations == 1) {
+            // if it's only one transformation
+            // child opens both files for stdin and stdout directly
 
-        if (it < (r.n_transformations - 1)) {
-            // not the last iteration
-            pipe(ip.pipe_matrix[it]);
+            int open_file = open(ip.origin_file, O_RDONLY);
+            dup2(open_file, 0);
+            close(open_file);
+
+            int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT, 0644);
+            dup2(dest_file, 1);
+            close(dest_file);
+
+            execl(task_with_dir, task_with_dir, NULL);
+
         }
-
-        // fork
-
-        int child_pid = fork();
-        if (!child_pid) {
-            // child
-            if (!it) {
-                printf("First child!\n");
-                // first child
-                // closing reading end
-                close(ip.pipe_matrix[it][0]);
-                printf("Origin file: %s\n\n", ip.origin_file);
-                int origin_file = open(ip.origin_file, O_RDONLY);
-                dup2(origin_file, 0);
-                close(origin_file);
-
-                // redirect writing end
-                dup2(ip.pipe_matrix[it][1],1);
-                close(ip.pipe_matrix[it][1]);
-
-                executor(task_with_dir);
+        else {
+            // pipes
+            if (it > 1) {
+                close(ip.pipe_matrix[it-2][0]);
+                close(ip.pipe_matrix[it-2][1]);
             }
-            else{ 
-                if (it == ip.n_transformations-1) {
-                    printf("Last child!\n");
-                    // last child
-                    // close writing end
-                    printf("Destination file: %s\n\n", ip.dest_file);
-                    close(ip.pipe_matrix[it-1][1]);
-                    int dest_file = open(ip.dest_file, O_WRONLY);
-                    dup2(dest_file, 1);
-                    close(dest_file);
 
-                    // redirect reading end
-                    dup2(ip.pipe_matrix[it-1][0],0);
-                    close(ip.pipe_matrix[it-1][0]);
+            if (it < (r.n_transformations - 1)) {
+                // not the last iteration
+                pipe(ip.pipe_matrix[it]);
+            }
 
-                    executor(task_with_dir);
-                }
-                else {
-                    printf("One of the middle child!\n");
-                    // one of the middle childs
-                    // close reading end
+            // fork
+
+            int ip.pid_array[it] = fork();
+            if (!ip.pid_array[it]) {
+                // child
+                if (!it) {
+                    printf("First child!\n");
+                    // first child
+                    // closing reading end
                     close(ip.pipe_matrix[it][0]);
+                    printf("Origin file: %s\n\n", ip.origin_file);
+                    int origin_file = open(ip.origin_file, O_RDONLY);
+                    dup2(origin_file, 0);
+                    close(origin_file);
 
-                    // close writing end
-                    close(ip.pipe_matrix[it-1][1]);
-
-                    // redirect reading end
-                    dup2(ip.pipe_matrix[it-1][0],0);
-                    close(ip.pipe_matrix[it-1][0]);
-
-                    //redirect writing end
+                    // redirect writing end
                     dup2(ip.pipe_matrix[it][1],1);
                     close(ip.pipe_matrix[it][1]);
 
-                    executor(task_with_dir);
+                    execl(task_with_dir, task_with_dir, NULL);
+                }
+                else{ 
+                    if (it == ip.n_transformations-1) {
+                        printf("Last child!\n");
+                        // last child
+                        // close writing end
+                        printf("Destination file: %s\n\n", ip.dest_file);
+                        char dest_fname[256];
+                        strcat(dest_fname, ip.dest_file);
+                        time_t rawtime;
+                        struct tm * timeinfo;
+                        time(&rawtime);
+                        timeinfo = localtime(&rawtime);
+                        char secs[256];
+                        my_itoa(timeinfo->tm_sec, secs);
+                        char mins[256];
+                        my_itoa(timeinfo->tm_min, mins);
+                        char hs[256];
+                        my_itoa(timeinfo->tm_hour, hs);
+                        strcat(dest_fname, hs);
+                        strcat(dest_fname, ":");
+                        strcat(dest_fname, mins);
+                        strcat(dest_fname, ":");
+                        strcat(dest_fname, secs);
+                        strcat(dest_fname, ".txt");
+                        printf("Dest_fname: %s\n", dest_fname);
+                        close(ip.pipe_matrix[it-1][1]);
+                        int dest_file = open(dest_fname, O_WRONLY | O_APPEND | O_CREAT);
+                        dup2(dest_file, 1);
+                        close(dest_file);
+
+                        // redirect reading end
+                        dup2(ip.pipe_matrix[it-1][0],0);
+                        close(ip.pipe_matrix[it-1][0]);
+
+                        execl(task_with_dir, task_with_dir, NULL);
+                        //execl("/bin/bash", "/bin/bash", "-c", "echo \"hello world!\"",  NULL);
+                        exit(1);
+                    }
+                    else {
+                        printf("One of the middle child!\n");
+                        // one of the middle childs
+                        // close reading end
+                        close(ip.pipe_matrix[it][0]);
+
+                        // close writing end
+                        close(ip.pipe_matrix[it-1][1]);
+
+                        // redirect reading end
+                        dup2(ip.pipe_matrix[it-1][0],0);
+                        close(ip.pipe_matrix[it-1][0]);
+
+                        //redirect writing end
+                        dup2(ip.pipe_matrix[it][1],1);
+                        close(ip.pipe_matrix[it][1]);
+
+                        execl(task_with_dir, task_with_dir, NULL);
+                    }
                 }
             }
+            else {
+                // Father
+            }
         }
-        else {
-            // Father
-            ip.pid_array[it] = child_pid;
-        }
+    }
+
+    if (r.n_transformations > 1) {
+        close(ip.pipe_matrix[ip.n_transformations-2][0]);
+        close(ip.pipe_matrix[ip.n_transformations-2][1]);
     }
 
     add(&ip, in_progress_list);
