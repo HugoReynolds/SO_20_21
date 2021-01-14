@@ -10,8 +10,7 @@
 #include <signal.h>
 #include "structures.h"
 
-#define REQUESTS_PIPE "./../tmp/requests_pipe"
-#define STATUS_PIPE "./../tmp/status_pipe"
+#define REQUESTS_PIPE "../tmp/requests_pipe"
 
 int flag = 1;
 int n_filters = 0;
@@ -52,7 +51,7 @@ char *my_itoa(int num, char *str)
 
 int filter_counter() {
     int lines = 0;
-    int filter_file = open("./../etc/aurrasd.conf",O_RDONLY);
+    int filter_file = open(conf_dir,O_RDONLY);
     if (filter_file == -1) printf("Something went wrong");
     else {
         char* buf = malloc(sizeof(char));
@@ -68,7 +67,7 @@ int filter_counter() {
 void get_filters(int n_filters) {
     char* buf = malloc(256*sizeof(char));
     char* fname= malloc(sizeof(char));
-    int filter_file = open("./../etc/aurrasd.conf",O_RDONLY);
+    int filter_file = open(conf_dir,O_RDONLY);
     for (int it = 0; it < n_filters; it++) {
         memset(buf, 0, 256);
         readln(filter_file, buf, 256);
@@ -102,7 +101,6 @@ int get_filter_index(char* arg){
 
 int check_filter_availability(Request r) {
     // returns 0 if all filters are available, if not, returns different than 0
-    int filters_available = 1;
     for(int it = 0; it < r.n_transformations; it++){
         // iterate transformations array
         for(int i=0; i < n_filters; i++) {
@@ -117,14 +115,19 @@ int check_filter_availability(Request r) {
     return 0;
 }
 
+void print_filters() {
+    printf("\n--- Instances of filters in use ---\n\n");
+    for (int it = 0; it < n_filters; it++) {
+        printf("%s: (%d/%d) (in use / total)\n", filter_array[it].name, filter_array[it].in_use, filter_array[it].quantity);
+    }
+    printf("\n++++++++++++++++++++++++++++++++++\n\n");
+}
+
 void releaseResources(LinkedList* list, int pid) {
     InProgress* curr = list->head;
     int curr_index = 0;
 
-    //printf("---Gonna release the resources for the pid: %d---\n\n", pid);
-
     if (curr == NULL) {
-        printf("Release resources. List is NULL\n");
         return;
     }
 
@@ -137,13 +140,35 @@ void releaseResources(LinkedList* list, int pid) {
                 int filter_index = get_filter_index(curr->task_array[it]);
                 if (filter_index != -1) {
                     // resources are freed
+                    printf("\n--- Released Resources that were allocated to PID: %d ---\n\n", curr->pid_array[it]);
                     filter_array[filter_index].in_use--;
-                    printf("A: [%d], B: [%d], E: [%d], R: [%d], L: [%d]\n\n", filter_array[0].in_use,filter_array[1].in_use,filter_array[2].in_use,filter_array[3].in_use,filter_array[4].in_use);
                 }
                 curr->done_transformations++;
-                printf("--- Task Nr: %d. %d/%d transformations done.--- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
+                printf("--- Task [%d]: %d/%d transformations done.--- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
                 if (curr->done_transformations == curr->n_transformations) {
-                    printf("\n --- Task [%d] is finished! --- \n\n", curr->task_nr);
+                    printf("\n--- Task [%d] is finished! --- \n\n", curr->task_nr);
+                    
+                    // variable initialization
+                    char my_pipe[24];
+                    char my_pid[6];
+                    char task_nr[6];
+
+                    // data initialization
+                    my_itoa(curr->pid, my_pid);
+                    my_itoa(curr->task_nr, task_nr);
+                    strcpy(my_pipe, "../tmp/pid");
+                    strcat(my_pipe + 10,  my_pid);
+
+                    Status_Reply sr;
+                    strcpy(sr.msg[0], "\n--- Task [");
+                    strcat(sr.msg[0] + 6, task_nr);
+                    strcat(sr.msg[0] + 6 + strlen(task_nr), "] is done. Thanks for using our service. ---\n\n");
+                    sr.lines = 1;
+
+                    int request_pipe = open(my_pipe, O_WRONLY);
+                    write(request_pipe, &sr, sizeof(Status_Reply));
+                    close(request_pipe);
+
                     removeIndex(list, curr_index);
                 }
                 return;
@@ -159,6 +184,7 @@ void signal_handler(int sig) {
     pid_t pid = wait(NULL);
     switch (sig){
         case SIGCHLD:
+            printf("\n--- PID: %d SIGCHLD---\n", pid);
             releaseResources(in_progress_list, pid);
             break;
         default:
@@ -173,12 +199,11 @@ void dispatch(Request r) {
          // iterate transformations array
         for(int i=0; i < n_filters; i++) {
             // iterate available filters array
-            //printf("filter_array[%d]: %s, r.transformation[%d]: %s. Strcmp -> %d\n", i, filter_array[i].name,it, r.transformations[it], strcmp(filter_array[i].name, r.transformations[it]));
             if(!strcmp(filter_array[i].name, r.transformations[it])) {
                 // found the desired transformation in the available filters array
                 if (filter_array[i].in_use < filter_array[i].quantity){
                     filter_array[i].in_use++;
-                    printf("A: [%d], B: [%d], E: [%d], R: [%d], L: [%d]\n\n", filter_array[0].in_use,filter_array[1].in_use,filter_array[2].in_use,filter_array[3].in_use,filter_array[4].in_use);
+                    print_filters();
                 } 
             }
         }
@@ -189,6 +214,7 @@ void dispatch(Request r) {
     ip.next = NULL;
     ip.task_nr = ++total_tasks;
     ip.done_transformations = 0;
+    ip.pid = r.pid;
     ip.n_transformations = r.n_transformations;
     strcpy(ip.origin_file,r.id_file);
     strcpy(ip.dest_file,r.dest_file);
@@ -205,17 +231,19 @@ void dispatch(Request r) {
         if (r.n_transformations == 1) {
             // if it's only one transformation
             // child opens both files for stdin and stdout directly
+            ip.pid_array[it] = fork();
+            if (ip.pid_array[it] == 0) {
+                int open_file = open(ip.origin_file, O_RDONLY);
+                dup2(open_file, 0);
+                close(open_file);
 
-            int open_file = open(ip.origin_file, O_RDONLY);
-            dup2(open_file, 0);
-            close(open_file);
+                int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                dup2(dest_file, 1);
+                close(dest_file);
 
-            int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT, 0644);
-            dup2(dest_file, 1);
-            close(dest_file);
-
-            execl(task_with_dir, task_with_dir, NULL);
-            exit(1);
+                execl(task_with_dir, task_with_dir, NULL);
+                _exit(1);
+            }
 
         }
         else {
@@ -248,7 +276,7 @@ void dispatch(Request r) {
                     close(ip.pipe_matrix[it][1]);
 
                     execl(task_with_dir, task_with_dir, NULL);
-                    exit(1);
+                    _exit(1);
                 }
                 else{ 
                     if (it == ip.n_transformations-1) {
@@ -256,22 +284,6 @@ void dispatch(Request r) {
                         // close writing end
                         char dest_fname[256];
                         strcat(dest_fname, ip.dest_file);
-                        time_t rawtime;
-                        struct tm * timeinfo;
-                        time(&rawtime);
-                        timeinfo = localtime(&rawtime);
-                        char secs[256];
-                        my_itoa(timeinfo->tm_sec, secs);
-                        char mins[256];
-                        my_itoa(timeinfo->tm_min, mins);
-                        char hs[256];
-                        my_itoa(timeinfo->tm_hour, hs);
-                        strcat(dest_fname, hs);
-                        strcat(dest_fname, ":");
-                        strcat(dest_fname, mins);
-                        strcat(dest_fname, ":");
-                        strcat(dest_fname, secs);
-                        strcat(dest_fname, ".txt");
                         close(ip.pipe_matrix[it-1][1]);
                         int dest_file = open(dest_fname, O_WRONLY | O_APPEND | O_CREAT);
                         dup2(dest_file, 1);
@@ -282,8 +294,7 @@ void dispatch(Request r) {
                         close(ip.pipe_matrix[it-1][0]);
 
                         execl(task_with_dir, task_with_dir, NULL);
-                        //execl("/bin/bash", "/bin/bash", "-c", "echo \"hello world!\"",  NULL);
-                        exit(1);
+                        _exit(1);
                     }
                     else {
                         // one of the middle childs
@@ -302,7 +313,7 @@ void dispatch(Request r) {
                         close(ip.pipe_matrix[it][1]);
 
                         execl(task_with_dir, task_with_dir, NULL);
-                        exit(1);
+                        _exit(1);
                     }
                 }
             }
@@ -319,8 +330,9 @@ void dispatch(Request r) {
 
     add(&ip, in_progress_list);
 
-    printf("\n+++ Added Task nr %d to InProgess +++\n\n", ip.task_nr);
+    printf("\n+++ Added Task [%d] to InProgess +++\n\n", ip.task_nr);
     for(int it = 0; it < ip.n_transformations; it++) printf("PID: %d -> Filter %s\n", ip.pid_array[it], ip.task_array[it]);
+    printf("\n");
 }
 
 void status_receiver(int pid) {
@@ -448,7 +460,7 @@ void status_receiver(int pid) {
     printf(" --- Sending status to %s. FD: %d ---\n\n", my_pipe, pipe);
     write(pipe, &rep, sizeof(Status_Reply));
     close(pipe);
-    exit(0);
+    _exit(0);
 }
 
 int main(int argc, char* argv[]) {
@@ -458,22 +470,12 @@ int main(int argc, char* argv[]) {
         trans_dir = strdup(argv[2]);
     }
     // Variables initialization
-    int server_pipes[3][2];
-
-    int req_fifo = mkfifo(REQUESTS_PIPE, 0666);
+    mkfifo(REQUESTS_PIPE, 0666);
     int requests_pipe = open(REQUESTS_PIPE, O_RDWR);
 
     if (requests_pipe == -1) return 0;
 
     printf("\n---PID Main: %d---\n\n", getpid());
-
-    int fd;
-    char readbuf[80];
-    char end[10];
-    char s[256];
-    int to_end;
-    int read_bytes;
-    int fconfig;
 
     // Server Setup
     // Signal Handlers

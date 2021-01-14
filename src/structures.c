@@ -20,6 +20,7 @@ void add(InProgress* data, LinkedList* list) {
         list->head = malloc(sizeof(InProgress));
         list->head->task_nr = data->task_nr;
         list->head->done_transformations = 0;
+        list->head->pid = data->pid;
         list->head->n_transformations = data->n_transformations;
         strcpy(list->head->origin_file, data->origin_file);
         strcpy(list->head->dest_file, data->dest_file);
@@ -42,6 +43,7 @@ void add(InProgress* data, LinkedList* list) {
         curr = curr->next;
         curr->task_nr = data->task_nr;
         curr->done_transformations = 0;
+        curr->pid = data->pid;
         curr->n_transformations = data->n_transformations;
         strcpy(curr->origin_file, data->origin_file);
         strcpy(curr->dest_file, data->dest_file);

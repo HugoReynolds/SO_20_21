@@ -4,6 +4,7 @@
 typedef struct Request {
     int code;
     int n_transformations;
+    int pid;
     char id_file[256];
     char dest_file[256];
     char transformations[10][256];
@@ -27,6 +28,7 @@ typedef struct Filter{
 
 typedef struct InProgress {
     int task_nr;
+    int pid; // pid of process that requested the transformation
     int done_transformations;
     int n_transformations;
     char origin_file[256];
