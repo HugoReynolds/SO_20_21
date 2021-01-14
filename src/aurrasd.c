@@ -123,8 +123,13 @@ void print_filters() {
     printf("\n++++++++++++++++++++++++++++++++++\n\n");
 }
 
-void releaseResources(LinkedList* list, int pid) {
-    InProgress* curr = list->head;
+void signal_handler(int sig) {
+    //function that handles signals
+    // when it receives a SIGCHLD, it means that a child has finished executing
+
+    pid_t pid = wait(NULL);
+    printf("\n--- PID: %d SIGCHLD---\n", pid);
+    InProgress* curr = in_progress_list->head;
     int curr_index = 0;
 
     if (curr == NULL) {
@@ -142,6 +147,7 @@ void releaseResources(LinkedList* list, int pid) {
                     // resources are freed
                     printf("\n--- Released Resources that were allocated to PID: %d ---\n\n", curr->pid_array[it]);
                     filter_array[filter_index].in_use--;
+                    curr->done_pid_array[it] = 1;
                 }
                 curr->done_transformations++;
                 printf("--- Task [%d]: %d/%d transformations done.--- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
@@ -169,27 +175,13 @@ void releaseResources(LinkedList* list, int pid) {
                     write(request_pipe, &sr, sizeof(Status_Reply));
                     close(request_pipe);
 
-                    removeIndex(list, curr_index);
+                    removeIndex(in_progress_list, curr_index);
                 }
                 return;
             }
         }
         curr = curr->next;
         curr_index++;
-    }
-}
-
-void signal_handler(int sig) {
-    //function that handles signals
-    pid_t pid = wait(NULL);
-    switch (sig){
-        case SIGCHLD:
-            printf("\n--- PID: %d SIGCHLD---\n", pid);
-            releaseResources(in_progress_list, pid);
-            break;
-        default:
-            printf("Some other signal was received\n\n");
-            break;
     }
 }
 
@@ -480,7 +472,6 @@ int main(int argc, char* argv[]) {
     // Server Setup
     // Signal Handlers
     signal(SIGCHLD, signal_handler);
-    signal(SIGUSR1, signal_handler);
 
     // Filter Management
     n_filters = filter_counter() + 1;
@@ -493,6 +484,7 @@ int main(int argc, char* argv[]) {
     
     while(flag) {
         Request r;
+        printf("\n--- Before read ---\n\n");
         read(requests_pipe, &r, sizeof(Request));
         // Filter Verification - verification se em ou nao transformacoes
         if (!r.code) {
@@ -522,7 +514,70 @@ int main(int argc, char* argv[]) {
                 while(filters_available) {
                     // this will execute if some of the filters are not available
                     sleep(5);
+                    printf("\n--- MAIN THREAD has finished sleep---\n");
+                    
+                    // checking for defunct processes
+                    int keep_while = 0, curr_index = 0, status, ret_pid = 0;
+                    InProgress* curr = NULL;
+                    if (in_progress_list->tasks_in_progress) {
+                        printf("in_progress_list->tasks_in_progress != 0\n\n");
+                        curr = in_progress_list->head;
+                        while (curr != NULL && !keep_while) {
+                            for (int it = 0; it < curr->n_transformations && !keep_while; it++) {
+                                ret_pid = waitpid(curr->pid_array[it], &status, WNOHANG);
+                                printf("TASK [%d]. PID [%d] has state: %d\n", curr->task_nr, ret_pid, status);
+                                if (ret_pid!=0 && status == 0) {
+                                    // child is defunct
+                                    // release resources that the child was keeping
+
+                                    for (int ii = 0; ii < curr->n_transformations; ii++) {
+                                        if (!curr->done_pid_array[it]) {
+                                            // release the resource, has the task doesn't need to be done
+                                            filter_array[get_filter_index(curr->task_array[it])].in_use--;
+                                            curr->done_pid_array[it] = 1;
+                                        }
+                                    }
+
+                                    // send message to client informing that the task failed
+                                    // variable initialization
+                                    char my_pipe[24];
+                                    char my_pid[6];
+                                    char task_nr[6];
+
+                                    // data initialization
+                                    my_itoa(curr->pid, my_pid);
+                                    my_itoa(curr->task_nr, task_nr);
+                                    strcpy(my_pipe, "../tmp/pid");
+                                    strcat(my_pipe + 10,  my_pid);
+
+                                    Status_Reply sr;
+                                    strcpy(sr.msg[0], "\n--- Task [");
+                                    strcat(sr.msg[0] + 6, task_nr);
+                                    strcat(sr.msg[0] + 6 + strlen(task_nr), "] has failed. ---\n\n");
+                                    sr.lines = 1;
+
+                                    int request_pipe = open(my_pipe, O_WRONLY);
+                                    write(request_pipe, &sr, sizeof(Status_Reply));
+                                    close(request_pipe);
+
+                                    // remove task from in_progress_list
+                                    printf("\n--- Removing Task[%d] from InProgress ---\n\n", curr->task_nr);
+                                    removeIndex(in_progress_list, curr_index);
+                                    keep_while = 1;
+                                }
+                            }
+                            curr = curr->next;
+                            curr_index++;
+                        }
+
+                    }
+
+                    else printf("in_progress_list->tasks_in_progress == 0\n\n");
+
+                    //checiking filter availability
+
                     filters_available = check_filter_availability(r);
+
                 }
 
                 // Request is ready to be dispatched

@@ -123,6 +123,7 @@ int main(int argc, char* argv[]) {
                         read(pipe_fd, &sr, sizeof(Status_Reply));
                         for (int it = 0; it < sr.lines; it++) printf("%s\n", sr.msg[it]);
                         received_requests++;
+                        printf("Received %d requests\n\n", received_requests);
                     }
                     _exit(0);
                 }

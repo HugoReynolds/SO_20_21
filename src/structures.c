@@ -27,6 +27,7 @@ void add(InProgress* data, LinkedList* list) {
         for (int it = 0; it < data->n_transformations; it++) {
             strcpy(list->head->task_array[it], data->task_array[it]);
             list->head->pid_array[it] = data->pid_array[it];
+            list->head->done_pid_array[it] = 0;
         }
         // pipe_matrix
         for (int it = 0; it < 10; it++) {
@@ -50,6 +51,7 @@ void add(InProgress* data, LinkedList* list) {
         for (int it = 0; it < data->n_transformations; it++) {
             strcpy(curr->task_array[it], data->task_array[it]);
             curr->pid_array[it] = data->pid_array[it];
+            curr->done_pid_array[it] = 0;
         }
         // pipe_matrix
         for (int it = 0; it < 10; it++) {

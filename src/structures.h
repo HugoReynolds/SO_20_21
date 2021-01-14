@@ -35,6 +35,7 @@ typedef struct InProgress {
     char dest_file[256];
     char task_array[10][256];
     int pid_array[10];
+    int done_pid_array[10]; // array to check which pids have finished executing
     int pipe_matrix[10][2];
     struct InProgress* next;
 } InProgress;
