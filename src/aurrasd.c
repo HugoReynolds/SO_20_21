@@ -159,21 +159,12 @@ void signal_handler(int sig) {
     pid_t pid = wait(NULL);
     switch (sig){
         case SIGCHLD:
-            printf("Received SIGCHILD with Pid: %d!\n\n",pid);
             releaseResources(in_progress_list, pid);
-            break;
-        case SIGUSR1:
-            printf("Received SIGUSR1 with Pid: %d!\n\n",pid);
             break;
         default:
             printf("Some other signal was received\n\n");
             break;
     }
-}
-
-void executor(char* trans) {
-    execl(trans, trans, NULL);
-    exit(1);
 }
 
 void dispatch(Request r) {
@@ -224,6 +215,7 @@ void dispatch(Request r) {
             close(dest_file);
 
             execl(task_with_dir, task_with_dir, NULL);
+            exit(1);
 
         }
         else {
@@ -240,15 +232,13 @@ void dispatch(Request r) {
 
             // fork
 
-            int ip.pid_array[it] = fork();
+            ip.pid_array[it] = fork();
             if (!ip.pid_array[it]) {
                 // child
                 if (!it) {
-                    printf("First child!\n");
                     // first child
                     // closing reading end
                     close(ip.pipe_matrix[it][0]);
-                    printf("Origin file: %s\n\n", ip.origin_file);
                     int origin_file = open(ip.origin_file, O_RDONLY);
                     dup2(origin_file, 0);
                     close(origin_file);
@@ -258,13 +248,12 @@ void dispatch(Request r) {
                     close(ip.pipe_matrix[it][1]);
 
                     execl(task_with_dir, task_with_dir, NULL);
+                    exit(1);
                 }
                 else{ 
                     if (it == ip.n_transformations-1) {
-                        printf("Last child!\n");
                         // last child
                         // close writing end
-                        printf("Destination file: %s\n\n", ip.dest_file);
                         char dest_fname[256];
                         strcat(dest_fname, ip.dest_file);
                         time_t rawtime;
@@ -283,7 +272,6 @@ void dispatch(Request r) {
                         strcat(dest_fname, ":");
                         strcat(dest_fname, secs);
                         strcat(dest_fname, ".txt");
-                        printf("Dest_fname: %s\n", dest_fname);
                         close(ip.pipe_matrix[it-1][1]);
                         int dest_file = open(dest_fname, O_WRONLY | O_APPEND | O_CREAT);
                         dup2(dest_file, 1);
@@ -298,7 +286,6 @@ void dispatch(Request r) {
                         exit(1);
                     }
                     else {
-                        printf("One of the middle child!\n");
                         // one of the middle childs
                         // close reading end
                         close(ip.pipe_matrix[it][0]);
@@ -315,6 +302,7 @@ void dispatch(Request r) {
                         close(ip.pipe_matrix[it][1]);
 
                         execl(task_with_dir, task_with_dir, NULL);
+                        exit(1);
                     }
                 }
             }
@@ -335,12 +323,139 @@ void dispatch(Request r) {
     for(int it = 0; it < ip.n_transformations; it++) printf("PID: %d -> Filter %s\n", ip.pid_array[it], ip.task_array[it]);
 }
 
+void status_receiver(int pid) {
+    char my_pipe[24];
+    char my_pid[6];
+    my_itoa(pid, my_pid);
+    strcpy(my_pipe, "../tmp/pid");
+    strcat(my_pipe + 10,  my_pid);
+    
+    Status_Reply rep;
+
+    int rep_lines = 0;
+
+    InProgress* ip = NULL;        
+
+    if (in_progress_list->tasks_in_progress > 0) ip = getIndex(in_progress_list, 0);
+
+
+    // Listing tasks
+    while(ip != NULL && rep_lines < 9) {
+
+        // variable declaration
+        char msg[1024];
+        char task_nr[4];
+        char origin_file[256];
+        char dest_file[256];
+        int msg_len = 0;
+
+        // value allocation
+
+        my_itoa(ip->task_nr, task_nr);
+        strcpy(origin_file, ip->origin_file);
+        strcpy(dest_file, ip->dest_file);
+
+        // message assembly
+
+        strcpy(msg, "Task #");
+        msg_len = 6;
+
+        strcat(msg + msg_len, task_nr);
+        msg_len += strlen(task_nr);
+
+        strcat(msg + msg_len, ": transform ");
+        msg_len += 12;
+
+        strcat(msg + msg_len, origin_file);
+        msg_len += strlen(origin_file);
+
+        strcat(msg + msg_len, " ");
+        msg_len++;
+
+        strcat(msg + msg_len, dest_file);
+        msg_len += strlen(dest_file);
+
+        strcat(msg + msg_len, " ");
+        msg_len++;
+        
+        for (int it = 0; it < ip->n_transformations; it++) {
+            // task addition
+            strcat(msg + msg_len, ip->task_array[it]);
+            msg_len += strlen(ip->task_array[it]);
+            
+            strcat(msg + msg_len, " ");
+            msg_len++;    
+        }
+
+        strcpy(rep.msg[rep_lines++], msg);
+        ip = ip->next;
+    }
+
+    for (int it = 0; it < (20 - rep_lines) && it < n_filters; it++) {
+        
+        // variable declaration
+        
+        char msg[1024];
+        char in_use[3];
+        char total[3];
+        int msg_len = 0;
+
+        // value allocation
+        my_itoa(filter_array[it].in_use, in_use);
+        my_itoa(filter_array[it].quantity, total);
+
+        // message assembly
+
+        strcpy(msg + msg_len, "Filter ");
+        msg_len += 7;
+
+        strcpy(msg + msg_len, filter_array[it].name);
+        msg_len += strlen(filter_array[it].name);
+
+        strcpy(msg + msg_len, ": ");
+        msg_len += 2;
+
+        strcpy(msg + msg_len, in_use);
+        msg_len += strlen(in_use);
+
+        strcpy(msg + msg_len, "/");
+        msg_len += 1;
+
+        strcpy(msg + msg_len, total);
+        msg_len += strlen(total);
+
+        strcpy(msg + msg_len, " (in use/total).");
+        msg_len += 16;
+
+        strcpy(rep.msg[rep_lines++], msg);
+
+    }
+
+    // pid addtion
+    // variable declaration
+    
+    char msg[1024];
+
+    strcpy(msg, "pid: ");
+    strcpy(msg + 5, my_pid);
+    strcpy(rep.msg[rep_lines++],msg);
+
+    rep.lines = rep_lines;
+
+    for (int it=0; it < rep_lines; it++) printf("Msg [%d]: %s\n", it, rep.msg[it]);
+
+    int pipe = open(my_pipe, O_WRONLY);
+    printf(" --- Sending status to %s. FD: %d ---\n\n", my_pipe, pipe);
+    write(pipe, &rep, sizeof(Status_Reply));
+    close(pipe);
+    exit(0);
+}
+
 int main(int argc, char* argv[]) {
     if (argc != 3) return 1;
     else {
         conf_dir = strdup(argv[1]);
         trans_dir = strdup(argv[2]);
-        printf("Conf: %s, Trans_dir: %s\n", conf_dir, trans_dir);
     }
     // Variables initialization
     int server_pipes[3][2];
@@ -348,10 +463,7 @@ int main(int argc, char* argv[]) {
     int req_fifo = mkfifo(REQUESTS_PIPE, 0666);
     int requests_pipe = open(REQUESTS_PIPE, O_RDWR);
 
-    mkfifo(STATUS_PIPE, 0666);
-    int status_pipe = open(STATUS_PIPE, O_RDWR);
-
-    if (requests_pipe == -1 || status_pipe == -1) return 0;
+    if (requests_pipe == -1) return 0;
 
     printf("\n---PID Main: %d---\n\n", getpid());
 
@@ -375,54 +487,48 @@ int main(int argc, char* argv[]) {
     in_progress_list = list_init();
 
     get_filters(n_filters);
-    
-    //printf("chars read: %ld \n",read(fd,&r,sizeof(r)));
 
-    //printf("size: %d\n", sizeof(r));    
     
     while(flag) {
         Request r;
         read(requests_pipe, &r, sizeof(Request));
-        //printf("id_file: %s\nr.destfile: %s \nr.ntransformations: %d \n",r.id_file,r.dest_file,r.n_transformations);
         // Filter Verification - verification se em ou nao transformacoes
-        
-        int filters_exist = 1;
-        for(int it = 0; it < r.n_transformations && filters_exist; it++){
-            if (get_filter_index(r.transformations[it]) == -1) filters_exist = 0;
-
-        }
-
-        if (!filters_exist) {
-            // One of the filters doesn't exist 
-            // Todo
-            printf("Filters don't exist\n");
+        if (!r.code) {
+            // Status Request
+            // deploy status receiver
+            
+            if (fork() == 0) {
+                // child
+                status_receiver(r.n_transformations);
+            }
         }
         else {
-            // All of the filters exist
-            // We now run check__filter_availability to see if all filters are available
-            // Returns 0 if they are, -1 otherwise
-            int filters_available = check_filter_availability(r);
-            while(filters_available) {
-                // this will execute if some of the filters are not available
-                //printf("/// Inside Filters are not Available while \\\\\n\n");
-                /*
-                sigset_t wset;
-                sigemptyset(&wset);
-                sigaddset(&wset, SIGUSR1);
-                int sig;
-                sigwait(&wset, &sig);
-                */
-                sleep(5);
-                //printf("---Before CheckFilterAvailability---\n\n");
-                filters_available = check_filter_availability(r);
-            }
+            // Transformation Request
+            int filters_exist = 1;
+            for(int it = 0; it < r.n_transformations && filters_exist; it++) if (get_filter_index(r.transformations[it]) == -1) filters_exist = 0;
 
-            // Request is ready to be dispatched
-            dispatch(r);
+            if (!filters_exist) {
+                // One of the filters doesn't exist 
+                // Todo
+                printf("Filters don't exist\n");
+            }
+            else {
+                // All of the filters exist
+                // We now run check__filter_availability to see if all filters are available
+                // Returns 0 if they are, -1 otherwise
+                int filters_available = check_filter_availability(r);
+                while(filters_available) {
+                    // this will execute if some of the filters are not available
+                    sleep(5);
+                    filters_available = check_filter_availability(r);
+                }
+
+                // Request is ready to be dispatched
+                dispatch(r);
+            }
         }
     }
 
     close(requests_pipe);
-    close(status_pipe);
     return 0;
 }

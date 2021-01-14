@@ -2,18 +2,21 @@
 #define structures_h
 
 typedef struct Request {
+    int code;
     int n_transformations;
     char id_file[256];
     char dest_file[256];
     char transformations[10][256];
 } Request;
 
-typedef struct Queued_Request{
-    char id_file[256];
-    char dest_file[256];
-    char pipe_name[128];
-    int child_pipes[10][2];
-} Queued_Request;
+typedef struct Status_Request{
+    int pid;
+} Status_Request;
+
+typedef struct Status_Reply{
+    char msg[20][1024];
+    int lines;
+} Status_Reply;
 
 typedef struct Filter{
     char name[256];

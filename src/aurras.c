@@ -10,7 +10,8 @@
 #include "structures.h"
 
 
-#define FIFO_FILE "../tmp/requests_pipe"
+#define REQUESTS_PIPE "../tmp/requests_pipe"
+#define STATUS_PIPE "../tmp/status_pipe"
 
 void free_request(Request r){
     for (int i=0; i<r.n_transformations; i++){
@@ -18,18 +19,24 @@ void free_request(Request r){
     }
 }
 
+char *my_itoa(int num, char *str) {
+    if(str == NULL)
+    {
+            return NULL;
+    }
+    sprintf(str, "%d", num);
+    return str;
+}
 
 int main(int argc, char* argv[]) {
-    int fd;
-    int end_process;
-    int stringlen;
-    int read_bytes;
-    char readbuf[80];
-    char end_str[5];
-    printf("FIFO_CLIENT: Send messages, infinitely, to end enter \"end\"\n");
-    fd = open(FIFO_FILE, O_CREAT|O_RDWR);
-    printf("Req: %d\n", fd);
-    strcpy(end_str, "end");
+    int requests_pipe = open(REQUESTS_PIPE, O_CREAT|O_WRONLY);
+    char my_pipe[24];
+    char my_pid[6];
+    strcpy(my_pipe, "../tmp/pid");
+    strcat(my_pipe + 10, my_itoa(getpid(), my_pid));
+    mkfifo(my_pipe, 0644);
+    int pipe_fd = open(my_pipe, O_RDWR);
+    printf("Pipe: %s. FD: %d\n", my_pipe, pipe_fd);
     srand(time(NULL));
     char* filter_array[] = {
         "eco",
@@ -45,12 +52,22 @@ int main(int argc, char* argv[]) {
             return 0;
             break;
         case 2:
-            printf ("argv[1]: %s\n",argv[1]);
             if(strcmp("status",argv[1])==0){
-                printf("e'status\n");
+                Request r;
+                r.code = 0;
+                r.n_transformations = getpid();
+                write(requests_pipe, &r, sizeof(Request));
+
+                Status_Reply sr;
+                printf("Before read\n");
+                int read_bytes = read(pipe_fd, &sr, sizeof(Status_Reply));
+                printf("After read. Bytes: %d\n", read_bytes);
+                for (int it = 0; it < sr.lines; it++) printf("%s\n", sr.msg[it]);
+                close(pipe_fd);
+                close(requests_pipe);
                 return 0;
             } else {
-                printf("you have incorrectly use the program, use it like this: ./aurras transform input-filename output-filename filter-id-1 filter-id-2 ...\n");
+                printf("You have incorrectly used the program, its use is as follows: ./aurras transform input-filename output-filename filter-id-1 filter-id-2 ...\n");
                 return 0;
             }
             break;
@@ -60,6 +77,7 @@ int main(int argc, char* argv[]) {
                 // gerador de pedidos aleatório
                 for (int it = 0; it < 50; it++) {
                     Request request;
+                    request.code = 1;
                     memset(&request.id_file, 0, 128);
                     strcpy(request.id_file, argv[2]);
                     memset(&request.dest_file, 0, 128);
@@ -82,7 +100,7 @@ int main(int argc, char* argv[]) {
                     }
                     printf("\n");
 
-                    write(fd,&request,sizeof(Request));
+                    write(requests_pipe,&request,sizeof(Request));
                     sleep(rand() % 5 + 3 + 1);
                 }
                 
@@ -107,7 +125,7 @@ int main(int argc, char* argv[]) {
                 }
                 printf("size: %ld \n",sizeof(request));
 
-                write(fd,&request,sizeof(Request));
+                write(requests_pipe,&request,sizeof(Request));
                 
                 sleep(2);
 
@@ -131,11 +149,10 @@ int main(int argc, char* argv[]) {
 
                 printf("r2.file: %s, r2.n_transformations: %d\n", r2.id_file, r2.n_transformations);
 
-                write(fd,&r2,sizeof(Request));
+                write(requests_pipe,&r2,sizeof(Request));
                 */
                 //free_request(request);
-                close(fd);
-                //printf("%d\n",request.n_transformations);
+                close(requests_pipe);
 
                 return 0;
             } else {
@@ -149,32 +166,5 @@ int main(int argc, char* argv[]) {
                  
     }
 
-
-
-
-
-
-
-   /*while (1) {
-      printf("Enter string: ");
-      fgets(readbuf, sizeof(readbuf), stdin);
-      stringlen = strlen(readbuf);
-      readbuf[stringlen - 1] = '\0';
-      end_process = strcmp(readbuf, end_str);
-      
-      //printf("end_process is %d\n", end_process);
-      if (end_process != 0) {
-         write(fd, readbuf, strlen(readbuf));
-         printf("FIFOCLIENT: Sent string: \"%s\" and string length is %d\n", readbuf, (int)strlen(readbuf));
-         read_bytes = read(fd, readbuf, sizeof(readbuf));
-         readbuf[read_bytes] = '\0';
-         printf("FIFOCLIENT: Received string: \"%s\" and length is %d\n", readbuf, (int)strlen(readbuf));
-      } else {
-         write(fd, readbuf, strlen(readbuf));
-         printf("FIFOCLIENT: Sent string: \"%s\" and string length is %d\n", readbuf, (int)strlen(readbuf));
-         close(fd);
-         break;
-      }
-   }*/
    return 0;
 }
