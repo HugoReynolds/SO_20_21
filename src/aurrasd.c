@@ -12,20 +12,18 @@
 
 #define REQUESTS_PIPE "../tmp/requests_pipe"
 
-int flag = 1;
-int n_filters = 0;
+int flag = 1;  // main while cycle
+int n_filters = 0;  // number of filters of the filter_array
 Filter* filter_array;
 
 // Total Tasks
-int total_tasks = 0;
+int total_tasks = 0;   // task counter
 
 // In Progress Tasks
-int curr_in_progress = 0;
-int max_in_progress = 10;
 LinkedList* in_progress_list;
 
 // Strings with locations
-char* conf_dir;
+char* conf_dir;   
 char* trans_dir;
 
 ssize_t readln(int fd, char* buf, size_t nbyte){
@@ -39,7 +37,7 @@ ssize_t readln(int fd, char* buf, size_t nbyte){
     return limite;
 }
 
-char *my_itoa(int num, char *str)
+char *my_itoa(int num, char *str)  // itoa had problems so i looked for an implementation
 {
         if(str == NULL)
         {
@@ -64,21 +62,30 @@ int filter_counter() {
 
 
 
-void get_filters(int n_filters) {
+void get_filters() {
+    // reads from conf file and fills filter_array
     char* buf = malloc(256*sizeof(char));
-    char* fname= malloc(sizeof(char));
     int filter_file = open(conf_dir,O_RDONLY);
+
     for (int it = 0; it < n_filters; it++) {
+        // on every iteration reads the filter's attributes from the conf file 
+        // name
         memset(buf, 0, 256);
         readln(filter_file, buf, 256);
         strcpy(filter_array[it].name, buf);
+        
+        // command
         memset(buf, 0, 256);
         readln(filter_file, buf, 256);
         strcpy(filter_array[it].command, buf);
+
+        // instances
         memset(buf, 0, 256);
         readln(filter_file, buf, 256);
         filter_array[it].quantity=atoi(buf);
         memset(buf, 0, 256);
+
+        // in use
         filter_array[it].in_use = 0;
     }
 
@@ -86,7 +93,6 @@ void get_filters(int n_filters) {
     for (int it = 0; it < n_filters; it++) printf("Filter nr: %d. Name: %s, Quantity: %d\n", it, filter_array[it].name, filter_array[it].quantity);
 
     free(buf);
-    free(fname);
     close(filter_file);
 
 }
@@ -102,14 +108,8 @@ int get_filter_index(char* arg){
 int check_filter_availability(Request r) {
     // returns 0 if all filters are available, if not, returns different than 0
     for(int it = 0; it < r.n_transformations; it++){
-        // iterate transformations array
-        for(int i=0; i < n_filters; i++) {
-            // iterate available filters array
-            if(!strcmp(filter_array[i].name, r.transformations[it])) {
-                // found the desired transformation in the available filters array
-                if (filter_array[i].in_use == filter_array[i].quantity) return -1;
-            }
-        }
+        // compares in use instances of a requested filter and checks if one more unity can be allocated
+        if (filter_array[get_filter_index(r.transformations[it])].in_use == filter_array[get_filter_index(r.transformations[it])].quantity) return -1;
     }
 
     return 0;
@@ -123,8 +123,12 @@ void print_filters() {
     printf("\n++++++++++++++++++++++++++++++++++\n\n");
 }
 
-void releaseResources(LinkedList* list, int pid) {
-    InProgress* curr = list->head;
+
+void signal_handler(int sig) {
+    //function that handles signals
+    pid_t pid = wait(NULL);
+    
+    InProgress* curr = in_progress_list->head;
     int curr_index = 0;
 
     if (curr == NULL) {
@@ -143,9 +147,15 @@ void releaseResources(LinkedList* list, int pid) {
                     printf("\n--- Released Resources that were allocated to PID: %d ---\n\n", curr->pid_array[it]);
                     filter_array[filter_index].in_use--;
                 }
+
+                // increments number of done transformtions 
                 curr->done_transformations++;
                 printf("--- Task [%d]: %d/%d transformations done.--- \n\n", curr->task_nr, curr->done_transformations, curr->n_transformations);
+
                 if (curr->done_transformations == curr->n_transformations) {
+                    // all transformations were completed so the request is done
+                    // sends information to the client to inform that his request is finished 
+
                     printf("\n--- Task [%d] is finished! --- \n\n", curr->task_nr);
                     
                     // variable initialization
@@ -165,11 +175,15 @@ void releaseResources(LinkedList* list, int pid) {
                     strcat(sr.msg[0] + 6 + strlen(task_nr), "] is done. Thanks for using our service. ---\n\n");
                     sr.lines = 1;
 
+                    // opens file descriptor to client's pipe and sends the information that the request is finished 
+
                     int request_pipe = open(my_pipe, O_WRONLY);
                     write(request_pipe, &sr, sizeof(Status_Reply));
                     close(request_pipe);
 
-                    removeIndex(list, curr_index);
+                    // removes the task from the in_progress_list
+
+                    removeIndex(in_progress_list, curr_index);
                 }
                 return;
             }
@@ -179,37 +193,15 @@ void releaseResources(LinkedList* list, int pid) {
     }
 }
 
-void signal_handler(int sig) {
-    //function that handles signals
-    pid_t pid = wait(NULL);
-    switch (sig){
-        case SIGCHLD:
-            printf("\n--- PID: %d SIGCHLD---\n", pid);
-            releaseResources(in_progress_list, pid);
-            break;
-        default:
-            printf("Some other signal was received\n\n");
-            break;
-    }
-}
-
 void dispatch(Request r) {
     // allocate resources
     for (int it = 0; it < r.n_transformations; it++) {
-         // iterate transformations array
-        for(int i=0; i < n_filters; i++) {
-            // iterate available filters array
-            if(!strcmp(filter_array[i].name, r.transformations[it])) {
-                // found the desired transformation in the available filters array
-                if (filter_array[i].in_use < filter_array[i].quantity){
-                    filter_array[i].in_use++;
-                    print_filters();
-                } 
-            }
-        }
+        // for each transformation, increments the number of instances for the corresponding filter
+        filter_array[get_filter_index(r.transformations[it])].in_use++;
+        print_filters();
     }
 
-    // add task to in_progress array
+    // creation of InProgress task to be added to in_progress_list
     InProgress ip;
     ip.next = NULL;
     ip.task_nr = ++total_tasks;
@@ -218,30 +210,38 @@ void dispatch(Request r) {
     ip.n_transformations = r.n_transformations;
     strcpy(ip.origin_file,r.id_file);
     strcpy(ip.dest_file,r.dest_file);
+
+
     for (int it = 0; it < r.n_transformations; it++) {
-        strcpy(ip.task_array[it], r.transformations[it]);
-        // format task string with dir
+        // for each transformation ...
+
         int filter_index = get_filter_index(ip.task_array[it]);
 
-        char* task_with_dir = malloc((strlen(filter_array[filter_index].command) + strlen(trans_dir) + 1) * sizeof(char));
-        memcpy(task_with_dir, trans_dir, strlen(trans_dir));
-        memcpy(task_with_dir + strlen(trans_dir), filter_array[filter_index].command, strlen(filter_array[filter_index].command));
-        memcpy(task_with_dir + strlen(trans_dir) + strlen(filter_array[filter_index].command), "\0", 1);
+        // format task string with dir
+        strcpy(ip.task_array[it], r.transformations[it]);
+        char* transf_with_dir = malloc((strlen(filter_array[filter_index].command) + strlen(trans_dir) + 1) * sizeof(char));
+        memcpy(transf_with_dir, trans_dir, strlen(trans_dir));
+        memcpy(transf_with_dir + strlen(trans_dir), filter_array[filter_index].command, strlen(filter_array[filter_index].command));
+        memcpy(transf_with_dir + strlen(trans_dir) + strlen(filter_array[filter_index].command), "\0", 1);
         
         if (r.n_transformations == 1) {
             // if it's only one transformation
             // child opens both files for stdin and stdout directly
             ip.pid_array[it] = fork();
+
             if (ip.pid_array[it] == 0) {
+                // child
+                // redirect the file to the stdin
                 int open_file = open(ip.origin_file, O_RDONLY);
                 dup2(open_file, 0);
                 close(open_file);
-
+                
+                // redirect the stdout to the dest_file
                 int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT, 0644);
                 dup2(dest_file, 1);
                 close(dest_file);
 
-                execl(task_with_dir, task_with_dir, NULL);
+                execl(transf_with_dir, transf_with_dir, NULL);
                 _exit(1);
             }
 
@@ -249,6 +249,7 @@ void dispatch(Request r) {
         else {
             // pipes
             if (it > 1) {
+                // close obsolete pipes, otherwise, childs lock up
                 close(ip.pipe_matrix[it-2][0]);
                 close(ip.pipe_matrix[it-2][1]);
             }
@@ -267,6 +268,8 @@ void dispatch(Request r) {
                     // first child
                     // closing reading end
                     close(ip.pipe_matrix[it][0]);
+
+                    // redirect file's content to stdin
                     int origin_file = open(ip.origin_file, O_RDONLY);
                     dup2(origin_file, 0);
                     close(origin_file);
@@ -275,25 +278,26 @@ void dispatch(Request r) {
                     dup2(ip.pipe_matrix[it][1],1);
                     close(ip.pipe_matrix[it][1]);
 
-                    execl(task_with_dir, task_with_dir, NULL);
+                    execl(transf_with_dir, transf_with_dir, NULL);
                     _exit(1);
                 }
                 else{ 
                     if (it == ip.n_transformations-1) {
                         // last child
-                        // close writing end
-                        char dest_fname[256];
-                        strcat(dest_fname, ip.dest_file);
-                        close(ip.pipe_matrix[it-1][1]);
-                        int dest_file = open(dest_fname, O_WRONLY | O_APPEND | O_CREAT);
-                        dup2(dest_file, 1);
-                        close(dest_file);
-
                         // redirect reading end
                         dup2(ip.pipe_matrix[it-1][0],0);
                         close(ip.pipe_matrix[it-1][0]);
 
-                        execl(task_with_dir, task_with_dir, NULL);
+                        // close writing end
+                        close(ip.pipe_matrix[it-1][1]);
+                        
+
+                        // redirect stdout to file
+                        int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT);
+                        dup2(dest_file, 1);
+                        close(dest_file);
+
+                        execl(transf_with_dir, transf_with_dir, NULL);
                         _exit(1);
                     }
                     else {
@@ -312,7 +316,7 @@ void dispatch(Request r) {
                         dup2(ip.pipe_matrix[it][1],1);
                         close(ip.pipe_matrix[it][1]);
 
-                        execl(task_with_dir, task_with_dir, NULL);
+                        execl(transf_with_dir, transf_with_dir, NULL);
                         _exit(1);
                     }
                 }
@@ -335,7 +339,8 @@ void dispatch(Request r) {
     printf("\n");
 }
 
-void status_receiver(int pid) {
+void status_replier(int pid) {
+    // Sends current server status to client
     char my_pipe[24];
     char my_pid[6];
     my_itoa(pid, my_pid);
@@ -403,6 +408,7 @@ void status_receiver(int pid) {
         ip = ip->next;
     }
 
+    // listing filters
     for (int it = 0; it < (20 - rep_lines) && it < n_filters; it++) {
         
         // variable declaration
@@ -469,7 +475,9 @@ int main(int argc, char* argv[]) {
         conf_dir = strdup(argv[1]);
         trans_dir = strdup(argv[2]);
     }
+
     // Variables initialization
+    // Creates and opens Requests_pipe
     mkfifo(REQUESTS_PIPE, 0666);
     int requests_pipe = open(REQUESTS_PIPE, O_RDWR);
 
@@ -480,39 +488,55 @@ int main(int argc, char* argv[]) {
     // Server Setup
     // Signal Handlers
     signal(SIGCHLD, signal_handler);
-    signal(SIGUSR1, signal_handler);
-
+   
     // Filter Management
     n_filters = filter_counter() + 1;
 
     filter_array = malloc(n_filters * sizeof(Filter));
     in_progress_list = list_init();
 
-    get_filters(n_filters);
-
+    // reads from config file and populates filter_array
+    get_filters();
     
     while(flag) {
         Request r;
         read(requests_pipe, &r, sizeof(Request));
-        // Filter Verification - verification se em ou nao transformacoes
         if (!r.code) {
             // Status Request
             // deploy status receiver
             
             if (fork() == 0) {
                 // child
-                status_receiver(r.n_transformations);
+                status_replier(r.n_transformations);
             }
         }
         else {
             // Transformation Request
+            // verify if the requested filters exist
             int filters_exist = 1;
             for(int it = 0; it < r.n_transformations && filters_exist; it++) if (get_filter_index(r.transformations[it]) == -1) filters_exist = 0;
 
             if (!filters_exist) {
                 // One of the filters doesn't exist 
-                // Todo
-                printf("Filters don't exist\n");
+                // variable initialization
+                char my_pipe[24];
+                char my_pid[6];
+                char task_nr[6];
+
+                // data initialization
+                my_itoa(r.pid, my_pid);
+                strcpy(my_pipe, "../tmp/pid");
+                strcat(my_pipe + 10,  my_pid);
+
+                Status_Reply sr;
+                strcpy(sr.msg[0], "\nOne of the filters you requested doesn't exist. Please reformulate it.\n");
+                sr.lines = 1;
+
+                // opens file descriptor to client's pipe and sends the information that the request is finished 
+
+                int request_pipe = open(my_pipe, O_WRONLY);
+                write(request_pipe, &sr, sizeof(Status_Reply));
+                close(request_pipe);
             }
             else {
                 // All of the filters exist

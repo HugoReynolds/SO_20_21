@@ -135,8 +135,7 @@ int main(int argc, char* argv[]) {
                     memset(&request.dest_file, 0, 128);
                     strcpy(request.dest_file, "../samples/output.mp3");
                     request.pid = getpid();
-                    //request.n_transformations=(rand() % (5 - 2 + 1) + 2);
-                    request.n_transformations= 1;
+                    request.n_transformations=(rand() % (5 - 2 + 1) + 2);
                     printf("--- Task [%d]: Nº of trans: %d ---\n\n", it+1, request.n_transformations);
                     int trans_it=0;
                     int check_array[] = {0,0,0,0,0};
@@ -155,7 +154,7 @@ int main(int argc, char* argv[]) {
                     printf("\n");
 
                     write(requests_pipe,&request,sizeof(Request));
-                    //sleep(rand() % 5 + 3 + 1);
+                    sleep(rand() % 5 + 3 + 1);
                 }
 
                 // wait for child
