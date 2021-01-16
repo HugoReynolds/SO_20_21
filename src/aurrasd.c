@@ -127,6 +127,9 @@ void print_filters() {
 void signal_handler(int sig) {
     //function that handles signals
     pid_t pid = wait(NULL);
+    //int status;
+    //pid_t pid = waitpid(0, &status, WNOHANG);
+    //if (WIFEXITED(status)) printf("PID: %d finished with status %d\n", pid, status);
     
     InProgress* curr = in_progress_list->head;
     int curr_index = 0;
@@ -214,16 +217,13 @@ void dispatch(Request r) {
 
     for (int it = 0; it < r.n_transformations; it++) {
         // for each transformation ...
-
+        strcpy(ip.task_array[it], r.transformations[it]);
         int filter_index = get_filter_index(ip.task_array[it]);
 
         // format task string with dir
-        strcpy(ip.task_array[it], r.transformations[it]);
-        char* transf_with_dir = malloc((strlen(filter_array[filter_index].command) + strlen(trans_dir) + 1) * sizeof(char));
-        memcpy(transf_with_dir, trans_dir, strlen(trans_dir));
-        memcpy(transf_with_dir + strlen(trans_dir), filter_array[filter_index].command, strlen(filter_array[filter_index].command));
-        memcpy(transf_with_dir + strlen(trans_dir) + strlen(filter_array[filter_index].command), "\0", 1);
-        
+        char* transf_with_dir = malloc((strlen(filter_array[filter_index].command) + strlen(trans_dir)) * sizeof(char));
+        strcpy(transf_with_dir, trans_dir);
+        strcpy(transf_with_dir + strlen(trans_dir), filter_array[filter_index].command);
         if (r.n_transformations == 1) {
             // if it's only one transformation
             // child opens both files for stdin and stdout directly
@@ -237,12 +237,12 @@ void dispatch(Request r) {
                 close(open_file);
                 
                 // redirect the stdout to the dest_file
-                int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                int dest_file = open(ip.dest_file, O_CREAT | O_APPEND | O_RDWR, 0644);
                 dup2(dest_file, 1);
                 close(dest_file);
 
                 execl(transf_with_dir, transf_with_dir, NULL);
-                _exit(1);
+                _exit(-1);
             }
 
         }
@@ -293,7 +293,7 @@ void dispatch(Request r) {
                         
 
                         // redirect stdout to file
-                        int dest_file = open(ip.dest_file, O_WRONLY | O_APPEND | O_CREAT);
+                        int dest_file = open(ip.dest_file, O_CREAT | O_APPEND | O_RDWR, 0644);
                         dup2(dest_file, 1);
                         close(dest_file);
 
@@ -521,7 +521,6 @@ int main(int argc, char* argv[]) {
                 // variable initialization
                 char my_pipe[24];
                 char my_pid[6];
-                char task_nr[6];
 
                 // data initialization
                 my_itoa(r.pid, my_pid);

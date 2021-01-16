@@ -71,6 +71,7 @@ int main(int argc, char* argv[]) {
                 strcpy(request.id_file, argv[2]);
                 memset(&request.dest_file, 0, 128);
                 strcpy(request.dest_file, argv[3]);
+                request.code = 1;
                 request.pid = getpid();
                 request.n_transformations=argc-4;
                 int trans_it=0;
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]) {
                 }
 
                 write(requests_pipe,&request,sizeof(Request));
-                free_request(request);
+                //free_request(request);
 
                 // read reply from server and print it
                 Status_Reply sr;
@@ -130,10 +131,18 @@ int main(int argc, char* argv[]) {
                 for (int it = 0; it < n_of_requests; it++) {
                     Request request;
                     request.code = 1;
-                    memset(&request.id_file, 0, 128);
+                    memset(&request.id_file, 0, 256);
+                    memset(&request.dest_file, 0, 256);
                     strcpy(request.id_file, "../samples/sample-1.m4a");
-                    memset(&request.dest_file, 0, 128);
-                    strcpy(request.dest_file, "../samples/output.mp3");
+                    strcat(request.dest_file, "../samples/outputs/vitor_feliz_ano_");
+                    int msg_len = strlen("../samples/outputs/vitor_feliz_ano_");
+                    
+                    char itt[3];
+                    my_itoa(it, itt);
+
+                    strcat(request.dest_file + msg_len, itt);
+                    msg_len += strlen(itt);
+
                     request.pid = getpid();
                     request.n_transformations=(rand() % (5 - 2 + 1) + 2);
                     printf("--- Task [%d]: Nº of trans: %d ---\n\n", it+1, request.n_transformations);
@@ -145,15 +154,61 @@ int main(int argc, char* argv[]) {
                             index_of_trans = (rand() % (4 - 0 + 1) + 0);
                         }
                         
+                        strcat(request.dest_file + msg_len, "_");
+                        msg_len++;
+
+                        strcat(request.dest_file + msg_len, filter_array[index_of_trans]);
+                        msg_len += strlen(filter_array[index_of_trans]);
+
                         // o indice index_of_trans ainda está a 0, o que significa, que a trans não foi escolhida
                         check_array[index_of_trans] = 1;
                         strcpy(request.transformations[trans_it], filter_array[index_of_trans]);
                         printf("Transformation[%d]: %s\n", trans_it, filter_array[index_of_trans]);
                         trans_it++;
                     }
+                    
                     printf("\n");
+                    strcat(request.dest_file + msg_len, "_");
+                    msg_len++;
+
+                    time_t rawtime;
+                    struct tm * timeinfo;
+                    time(&rawtime);
+                    timeinfo = localtime(&rawtime);
+                    // variable initialization
+                    char* hours = malloc(3*sizeof(char));
+                    char* minutes = malloc(3*sizeof(char));
+                    char* secs = malloc(3*sizeof(char));
+                    
+
+                    // data initialization
+                    my_itoa(timeinfo->tm_hour, hours);
+                    my_itoa(timeinfo->tm_min, minutes);
+                    my_itoa(timeinfo->tm_sec, secs);
+                    
+ 
+                    strcat(request.dest_file + msg_len, hours);
+                    msg_len += strlen(hours);
+
+                    strcat(request.dest_file + msg_len, ":");
+                    msg_len++;
+
+                    strcat(request.dest_file + msg_len, minutes);
+                    msg_len += strlen(minutes);
+
+                    strcat(request.dest_file + msg_len, ":");
+                    msg_len++;
+
+                    strcat(request.dest_file + msg_len, secs);
+                    msg_len += strlen(secs);
+
+                    strcat(request.dest_file + msg_len, ".mp3");
+
 
                     write(requests_pipe,&request,sizeof(Request));
+                    free(hours);
+                    free(minutes);
+                    free(secs);
                     sleep(rand() % 5 + 3 + 1);
                 }
 

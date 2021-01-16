@@ -17,7 +17,7 @@ obj/aurras.o: src/aurras.c src/structures.h
 	gcc -Wall -c src/aurras.c -o obj/aurras.o
 
 clean:
-	rm bin/aurras bin/aurrasd obj/* tmp/*
+	rm bin/aurras bin/aurrasd obj/* tmp/* samples/outputs/*
 
 test:
 	bin/aurras transform samples/sample-1.mp3 tmp/sample-1.mp3 eco alto baixo
